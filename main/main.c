@@ -107,7 +107,6 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
         int succ =0;
         char uid_str[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
          rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
-        //RC522_RETURN_ON_ERROR(rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str)));
         rc522_picc_print(picc);
 
         FILE* f = fopen("/spiffs/cards.txt", "r");
@@ -117,7 +116,7 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
         }
         char line[12];
         int line_counter = 1;
-
+        // searching for uid in the txt
        while(fgets(line, sizeof(line), f)!=NULL){
             size_t len = strlen(line);
             if (len > 0 && line[len - 1] == '\n') {
@@ -132,12 +131,14 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
         }
         line_counter = (line_counter/2) + line_counter%2;
         fclose(f);
+        // idiot proof mechanism, you can't delete the master key
         if(line_counter==1){
             ESP_LOGE(TAG, "MASTER KEY SCANNED");
             master_actions = 1;
             return;
         }
         if(succ==0){
+            // adding card's uid to /spiffs/cards.txt
             if(master_actions){
                 FILE* f = fopen("/spiffs/cards.txt", "a");
                 if (f == NULL) {
@@ -149,29 +150,27 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
                 ESP_LOGE(TAG, "Card added");
                 master_actions = 0;
                 return;
-
-
             }else{
-                ESP_LOGE(TAG, "Card declined");
+                ESP_LOGE(TAG, "Card declined: %s", line);
                 blink_led(0);
             }
         }
         else{
             succ = 0;
             if(master_actions){
+                // removing card's uid from the list
                 delete_line("/spiffs/cards.txt", line_counter);
                 ESP_LOGE(TAG, "Card deleted");
                 master_actions = 0;
                 return;
             }else{
-                ESP_LOGI(TAG, "Card found: %s", line);
+                ESP_LOGI(TAG, "Card authenticated: %s", line);
                 blink_led(1);
             }
         }
-        // strip newline
     }
     else if (picc->state == RC522_PICC_STATE_IDLE && event->old_state >= RC522_PICC_STATE_ACTIVE) {
-        ESP_LOGI(TAG, "Card has been removed");
+        ESP_LOGI(TAG, "Card has been removed from the reader");
     }
 }
 
