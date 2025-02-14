@@ -93,7 +93,6 @@ void delete_line(const char *filename, int line_to_delete) {
     // Remove the original file and rename the temporary file
     remove(filename);
     rename("/spiffs/temp.txt", filename);
-    ESP_LOGE(TAG, "Card deleted");
 }
 
 
