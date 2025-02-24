@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
@@ -36,13 +37,31 @@
 #define ECHO_UART_BAUD_RATE     (CONFIG_EXAMPLE_UART_BAUD_RATE)
 #define ECHO_TASK_STACK_SIZE    (CONFIG_EXAMPLE_TASK_STACK_SIZE)
 
+TaskHandle_t myTaskHandle = NULL;
+TaskHandle_t myTaskHandle2 = NULL;
+QueueHandle_t queue;
+
 
 #define BUF_SIZE (1024)
 
-static void echo_task(void *arg)
+ void echo_task(void * arg)
 {
+
+    char txBuffer[50];
+    queue = xQueueCreate(5, sizeof(txBuffer)); 
+    if (queue == 0)
+    {
+     printf("Failed to create queue= %p\n", queue);
+    }
+
+    
+
+
     /* Configure parameters of an UART driver,
      * communication pins and install the driver */
+    //char * msg = (char *) arg;
+
+   // ESP_LOGI("TAG", "%s", msg);
     uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -67,16 +86,38 @@ static void echo_task(void *arg)
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, uart_buffer_size, \
                                             uart_buffer_size, 10, &uart_queue, 0));
 
+    sprintf(txBuffer, "Hello from Demo_Task 1");
+    xQueueSend(queue, (void*)txBuffer, (TickType_t)0);
+
     // Write data to UART.
     
-    while (1) {
+   // while (1) {
         //char* test_str = "This is a test string.\n";
         //uart_write_bytes(UART_NUM_0, (const char*)test_str, strlen(test_str));
-        uart_write_bytes_with_break(UART_NUM_0, "test break\n",strlen("test break\n"), 100);
+      //  uart_write_bytes_with_break(UART_NUM_0, "test break\n",strlen("test break\n"), 100);
+      //  vTaskDelete(NULL);
+    //}
+}
+
+void send_to_uart(void *arg){
+    char rxBuffer[50];
+    while(1){
+     if( xQueueReceive(queue, &(rxBuffer), (TickType_t)5))
+     {
+      printf("Received data from queue == %s\n", rxBuffer);
+      uart_write_bytes_with_break(UART_NUM_0, rxBuffer,50, 100);
+      vTaskDelay(1000/ portTICK_PERIOD_MS);
+
+     }
     }
 }
 
+//char msg[12] ="test message";
+
 void app_main(void)
 {
-    xTaskCreate(echo_task, "uart_echo_task", ECHO_TASK_STACK_SIZE, NULL, 10, NULL);
+    xTaskCreate(echo_task, "uart_echo_task", ECHO_TASK_STACK_SIZE, NULL, 10, &myTaskHandle);
+    xTaskCreatePinnedToCore(send_to_uart, "send_to_uart", ECHO_TASK_STACK_SIZE, NULL ,10, &myTaskHandle2, 1);
 }
+
+
