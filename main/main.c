@@ -15,13 +15,24 @@
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "driver/uart.h"
 
 #define RC522_SPI_BUS_GPIO_MISO    (19) 
 #define RC522_SPI_BUS_GPIO_MOSI    (23)
 #define RC522_SPI_BUS_GPIO_SCLK    (18)
 #define RC522_SPI_SCANNER_GPIO_SDA (05) // VSPI_SS
 #define RC522_SCANNER_GPIO_RST     (22) // soft-reset
-#define LED_GPIO GPIO_NUM_2
+#define LED_GPIO                   GPIO_NUM_2
+#define UART_BAUDRATE              115200
+#define UART_PORT_NUM              UART_NUM_0
+#define BUF_SIZE                   (1024)
+#define ECHO_TEST_TXD (CONFIG_EXAMPLE_UART_TXD)
+#define ECHO_TEST_RXD (CONFIG_EXAMPLE_UART_RXD)
+#define ECHO_TEST_RTS (UART_PIN_NO_CHANGE)
+#define ECHO_TEST_CTS (UART_PIN_NO_CHANGE)
+
+
 
 static const char *TAG = "UNI-FM";
 
@@ -40,6 +51,11 @@ static rc522_spi_config_t driver_config = {
 
 static rc522_driver_handle_t driver;
 static rc522_handle_t scanner;
+TaskHandle_t myTaskHandle = NULL;
+TaskHandle_t myTaskHandle2 = NULL;
+QueueHandle_t queue;
+char txBuffer[50];
+
 
 void blink_led(int num){
     esp_rom_gpio_pad_select_gpio(LED_GPIO);
@@ -165,7 +181,12 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
                 return;
             }else{
                 ESP_LOGI(TAG, "Card authenticated: %s", line);
+                sprintf(txBuffer, line);
+                xQueueSend(queue, (void*)txBuffer, (TickType_t)0);
                 blink_led(1);
+                /*while (1) {
+                    vTaskDelay(3000/ portTICK_PERIOD_MS);
+                }*/
             }
         }
     }
@@ -174,8 +195,61 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
     }
 }
 
+void uart_comm(void *){
+
+    char rxBuffer[50];
+    //uint8_t data[128];
+    while(1){
+     if( xQueueReceive(queue, &(rxBuffer), (TickType_t)5))
+     {
+      printf("Received data from queue == %s\n", rxBuffer);
+      rxBuffer[49]='\n';
+      uart_write_bytes_with_break(UART_PORT_NUM, rxBuffer,50, 100);
+      /*int len = uart_read_bytes(UART_PORT_NUM, sizeof(data)-1, 100); //100 hány tickenként olvasson
+      if(len){
+        data[len] = '\0';
+        ESP_LOGI("UART RECEIVER", "received str: %s", (char*) data);
+      }*/
+      vTaskDelay(1000/ portTICK_PERIOD_MS);
+
+     }
+    }
+}
+
 void app_main(void)
 {
+     /* Configure parameters of an UART driver,
+     * communication pins and install the driver */
+
+     uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_APB,
+    };
+    int intr_alloc_flags = 0;
+
+#if CONFIG_UART_ISR_IN_IRAM
+    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+#endif
+
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(UART_PORT_NUM, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_PORT_NUM, 1, 3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    //const int uart_buffer_size = (1024 * 2);
+    //QueueHandle_t uart_queue;
+    // Install UART driver using an event queue here
+   // ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, uart_buffer_size, uart_buffer_size, 10, &uart_queue, 0));
+
+    queue = xQueueCreate(5, sizeof(txBuffer)); 
+    if (queue == 0)
+    {
+    printf("Failed to create queue= %p\n", queue);
+    }
+    xTaskCreatePinnedToCore(uart_comm, "uart_comm", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,10, &myTaskHandle2, 1);
     ESP_LOGI("spiffs", "Initializing SPIFFS");
 
     esp_vfs_spiffs_conf_t conf = {
@@ -249,4 +323,8 @@ void app_main(void)
     rc522_create(&scanner_config, &scanner);
     rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_picc_state_changed, NULL);
     rc522_start(scanner);
+    
+    //setup_uart(void);
+   
+
 }
