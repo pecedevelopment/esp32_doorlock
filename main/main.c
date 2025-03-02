@@ -139,7 +139,7 @@ int find_uid(char * uid_str, int * line_counter){
     return 0;
 }
 
-static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t event_id, void *data)
+static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, void *data)
 {
     rc522_picc_state_changed_event_t *event = (rc522_picc_state_changed_event_t *)data;
     rc522_picc_t *picc = event->picc;
@@ -149,7 +149,7 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
         rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
         rc522_picc_print(picc);
         while(using_filesystem==1){
-            ESP_LOGI(TAG, "Waiting for using_filesystem =0 at on_picc_state_changed");
+            ESP_LOGI(TAG, "Waiting for using_filesystem =0 at on_uid_change");
             vTaskDelay(1000/ portTICK_PERIOD_MS);
         }
         using_filesystem = 1;
@@ -229,148 +229,144 @@ void trim_leading(char *str) {
 
 void uart_comm(void *){
 
-   // char rxBuffer[50];
-    uint8_t data[128];
+    char buffer[50];
+    int index = 0;
+
     while(1){
-    /* if( xQueueReceive(queue, &(rxBuffer), (TickType_t)5))
-     {*/
-      /*printf("Received data from queue == %s\n", rxBuffer);
-      rxBuffer[49]='\n';
-      uart_write_bytes_with_break(UART_PORT_NUM, rxBuffer,50, 100);*/
-      int len = uart_read_bytes(UART_PORT_NUM, data, 127, 100); //100 hány tickenként olvasson
-      if(len){
-        data[len] = '\0';
-        ESP_LOGI("UART RECEIVER", "received str: %s", (char*) data);
-        while(using_filesystem==1){
-            ESP_LOGI(TAG, "Waiting for using_filesystem =0 at uart_comm");
-            vTaskDelay(1000/ portTICK_PERIOD_MS);
-        }
+        uint8_t data;
+        int len = uart_read_bytes(UART_PORT_NUM, &data, 1, 100 ); //100 hány tickenként olvasson
+        if(len>0){
+            if (data == '\n'||data=='\r') {  // Ha Entert nyomtunk
+                if (index > 0) {
+                    buffer[index] = '\0';  // Lezárjuk a stringet
+                    ESP_LOGI(TAG, "Received: %s", buffer);  // Kiírjuk az üzenetet
+                    index = 0;  // Újrakezdjük a buffer feltöltését
 
-            using_filesystem =1;
-
-            char input[128];
-            strcpy(input, (char*)data);
-            char command[20], uid1[50], uid2[50];
-            parseCommand(input, command, uid1, uid2);
-            trim_leading(uid1);
-            trim_leading(uid2);
-            ESP_LOGI("uid2", "received str:%s", uid2);
+                    while(using_filesystem==1){
+                        ESP_LOGI(TAG, "Waiting for using_filesystem =0 at uart_comm");
+                        vTaskDelay(1000/ portTICK_PERIOD_MS);
+                    }
             
-            if(strcmp("list", command)==0){
-                
-                FILE* f = fopen(INPUT_FILE, "r");
-                if (f == NULL) {
-                    ESP_LOGE(TAG, "Failed to open file for reading /spiffs/cards.txt");
-                    return;
-                }
-                char line[12];
-                //int l_c = 0;
-                while (fgets(line, sizeof(line), f) != NULL) {
-                    size_t len = strlen(line);
-                    //ESP_LOGI(TAG, "counter: %dline:%s", l_c, line);
-                    //l_c++;
-                    // Remove the trailing newline, if any
-                    if (len > 0 && line[len - 1] == '\n') {
-                        line[len - 1] = '\0';
-                        len--; // Adjust length after removing the newline
+                    using_filesystem =1;
+                    char command[20], uid1[50], uid2[50];
+                    parseCommand(buffer, command, uid1, uid2);
+                    trim_leading(uid1);
+                    trim_leading(uid2);
+                    ESP_LOGI(TAG, "uid1:%s", uid1);
+                    ESP_LOGI(TAG, "uid2:%s", uid2);
+
+                    if(strcmp("list", command)==0){      
+                        FILE* f = fopen(INPUT_FILE, "r");
+                        if (f == NULL) {
+                            ESP_LOGE(TAG, "Failed to open file for reading /spiffs/cards.txt");
+                            return;
+                        }
+                        char line[12];
+                        while (fgets(line, sizeof(line), f) != NULL) {
+                            size_t len = strlen(line);
+                            // Remove the trailing newline, if any
+                            if (len > 0 && line[len - 1] == '\n') {
+                                line[len - 1] = '\0';
+                                len--; // Adjust length after removing the newline
+                            }
+                            
+                            // Trim leading spaces
+                            char *start = line;
+                            while (*start && isspace((unsigned char)*start)) {
+                                start++;
+                            }
+                        
+                            // Trim trailing spaces
+                            char *end = start + strlen(start) - 1;
+                            while (end >= start && isspace((unsigned char)*end)) {
+                                end--;
+                            }
+                            
+                            // Null-terminate the trimmed line
+                            *(end + 1) = '\0';
+                        
+                            // If the line is empty after trimming, skip it
+                            if (*start == '\0') {
+                                continue; // Skip empty or whitespace-only lines
+                            }
+                            
+                            // Log the non-empty line, along with its length for debugging
+                            ESP_LOGI(TAG, "UID: \"%s\"", start );
+                        }
+                        fclose(f);
                     }
-                
-                    // Trim leading spaces
-                    char *start = line;
-                    while (*start && isspace((unsigned char)*start)) {
-                        start++;
-                    }
-                
-                    // Trim trailing spaces
-                    char *end = start + strlen(start) - 1;
-                    while (end >= start && isspace((unsigned char)*end)) {
-                        end--;
-                    }
-                    
-                    // Null-terminate the trimmed line
-                    *(end + 1) = '\0';
-                
-                    // If the line is empty after trimming, skip it
-                    if (*start == '\0') {
-                        continue; // Skip empty or whitespace-only lines
-                    }
-                
-                    // Log the non-empty line, along with its length for debugging
-                    ESP_LOGI(TAG, "UID: \"%s\"", start );
-                }
-                fclose(f);
-            }
-            else if(strcmp("replace", command)==0){
-                FILE *file = fopen(INPUT_FILE, "r");
-                FILE *temp = fopen(TEMP_FILE, "w");
-
-                if (!file) {
-                    printf("Error opening file. /spiffs/cards.txt\n");
-                    return;
-                }
-                if (!temp) {
-                    printf("Error opening file. /spiffs/temp.txt\n");
-                    return;
-                }
-
-                char buffer[1024];
-                int replaced = 0;
-
-                while (fgets(buffer, sizeof(buffer), file)) {
-                    // Remove newline characters for exact comparison
-                    buffer[strcspn(buffer, "\r\n")] = 0;
-
-                    if (strcmp(buffer, uid1) == 0 && !replaced) {
-                        fprintf(temp, "%s\n", uid2); // Write the replacement line
-                        replaced = 1;
-                    } else {
-                        fprintf(temp, "%s\n", buffer); // Write the original line
-                    }
-                }
-
-                fclose(file);
-                fclose(temp);
-
-                // Replace the original file with the updated one
-                remove(INPUT_FILE);
-                rename(TEMP_FILE, INPUT_FILE);
-
-                if (replaced) {
-                    printf("Line replaced successfully.\n");
-                } else {
-                    printf("Line not found.\n");
-                }
-            }
-            else if(strcmp("delete", command)==0){
-                int line_counter = -1;
-                int succ = find_uid(uid1,&line_counter);
-                if(succ==1){
-                    ESP_LOGE(TAG, "UID: %s will be deleted on line %d",uid1, line_counter);
-                    delete_line(line_counter);
-                    ESP_LOGE(TAG, "UID deleted");
-                }
-                else{
-                    ESP_LOGE(TAG, "UID not found");
-                }
-            }
-            else if(strcmp("add", command)==0){
-                FILE* f = fopen(INPUT_FILE, "a");
-                if (f == NULL) {
-                    ESP_LOGE(TAG, "Failed to open file for appending");
-                    return;
-                }
-                fprintf(f,"%s",uid1);
-                fclose(f);
-                ESP_LOGE(TAG, "Card added");
-            }
-            using_filesystem = 0;
+                    else if(strcmp("replace", command)==0){
+                        FILE *file = fopen(INPUT_FILE, "r");
+                        FILE *temp = fopen(TEMP_FILE, "w");
         
-      }
-      vTaskDelay(1000/ portTICK_PERIOD_MS);
+                        if (!file) {
+                            printf("Error opening file. /spiffs/cards.txt\n");
+                            return;
+                        }
+                        if (!temp) {
+                            printf("Error opening file. /spiffs/temp.txt\n");
+                            return;
+                        }
+        
+                        char buffer[1024];
+                        int replaced = 0;
+        
+                        while (fgets(buffer, sizeof(buffer), file)) {
+                            // Remove newline characters for exact comparison
+                            buffer[strcspn(buffer, "\r\n")] = 0;
+        
+                            if (strcmp(buffer, uid1) == 0 && !replaced) {
+                                fprintf(temp, "%s\n", uid2); // Write the replacement line
+                                replaced = 1;
+                            } else {
+                                fprintf(temp, "%s\n", buffer); // Write the original line
+                            }
+                        }
+        
+                        fclose(file);
+                        fclose(temp);
+        
+                        // Replace the original file with the updated one
+                        remove(INPUT_FILE);
+                        rename(TEMP_FILE, INPUT_FILE);
+        
+                        if (replaced) {
+                            printf("Line replaced successfully.\n");
+                        } else {
+                            printf("Line not found.\n");
+                        }
+                    }
+                    else if(strcmp("delete", command)==0){
+                        int line_counter = -1;
+                        int succ = find_uid(uid1,&line_counter);
+                        if(succ==1){
+                            ESP_LOGE(TAG, "UID: %s will be deleted on line %d",uid1, line_counter);
+                            delete_line(line_counter);
+                            ESP_LOGE(TAG, "UID deleted");
+                        }
+                        else{
+                            ESP_LOGE(TAG, "UID not found");
+                        }
+                    }
+                    else if(strcmp("add", command)==0){
+                        FILE* f = fopen(INPUT_FILE, "a");
+                        if (f == NULL) {
+                            ESP_LOGE(TAG, "Failed to open file for appending");
+                            return;
+                        }
+                        fprintf(f,"%s",uid1);
+                        fclose(f);
+                        ESP_LOGE(TAG, "Card added");
+                    }
+                    using_filesystem = 0;
 
-     //}
+                }
+            } 
+            else if (index < sizeof(buffer) - 1) {
+                buffer[index++] = data;  // Hozzáadjuk a karaktert
+            }
+        }
     }
-
 }
 void remove_empty_lines() {
     FILE *input = fopen(INPUT_FILE, "r");
@@ -445,7 +441,7 @@ void rc522(void *){
         };
     
         rc522_create(&scanner_config, &scanner);*/
-        rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_picc_state_changed, NULL);
+        rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_uid_change, NULL);
         //rc522_start(scanner);
         vTaskDelay(1000/ portTICK_PERIOD_MS);
     }
@@ -556,13 +552,10 @@ void app_main(void)
     };  
     
     rc522_create(&scanner_config, &scanner);
-    rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_picc_state_changed, NULL);
+    rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_uid_change, NULL);
     //xTaskCreatePinnedToCore(rc522, "rc522", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,9, &myTaskHandle1, 1);
     rc522_start(scanner);
     //remove_empty_lines();
     xTaskCreatePinnedToCore(uart_comm, "uart_comm", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,10, &myTaskHandle2, 0);
     
-    //setup_uart(void);
-   
-
 }
