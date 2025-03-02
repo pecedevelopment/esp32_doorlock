@@ -116,13 +116,37 @@ void delete_line(const char *filename, int line_to_delete) {
 
 int master_actions = 0;
 
+int find_uid(char * uid_str, int * line_counter){
+    FILE* f = fopen("/spiffs/cards.txt", "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return -1;
+    }
+    *line_counter = 1;
+    char line[12];
+    while(fgets(line, sizeof(line), f)!=NULL){
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+
+        if(strcmp(line, uid_str)==0){
+            *line_counter = ((*line_counter)/2) + (*line_counter)%2;
+            fclose(f);
+            return 1;         
+        }
+        (*line_counter)++;
+    }
+    fclose(f);
+    return 0;
+}
+
 static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t event_id, void *data)
 {
     rc522_picc_state_changed_event_t *event = (rc522_picc_state_changed_event_t *)data;
     rc522_picc_t *picc = event->picc;
 
     if (picc->state == RC522_PICC_STATE_ACTIVE) {
-        int succ =0;
         char uid_str[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
         rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
         rc522_picc_print(picc);
@@ -131,32 +155,14 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
             vTaskDelay(1000/ portTICK_PERIOD_MS);
         }
         uart_using_filesystem = 1;
-        FILE* f = fopen("/spiffs/cards.txt", "r");
-        if (f == NULL) {
-            ESP_LOGE(TAG, "Failed to open file for reading");
-            return;
-        }
-        char line[12];
-        int line_counter = 1;
         // searching for uid in the txt
-       while(fgets(line, sizeof(line), f)!=NULL){
-            size_t len = strlen(line);
-            if (len > 0 && line[len - 1] == '\n') {
-                line[len - 1] = '\0';
-            }
-
-            if(strcmp(line, uid_str)==0){
-                succ =1;
-                break;           
-            }
-            line_counter++;
-        }
-        line_counter = (line_counter/2) + line_counter%2;
-        fclose(f);
+        int uid_line = -1;
+        int succ = find_uid(uid_str, &uid_line);
         // idiot proof mechanism, you can't delete the master key
-        if(line_counter==1){
+        if(uid_line==1){
             ESP_LOGE(TAG, "MASTER KEY SCANNED");
             master_actions = 1;
+            uart_using_filesystem = 0;
             return;
         }
         if(succ==0){
@@ -171,9 +177,10 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
                 fclose(f);
                 ESP_LOGE(TAG, "Card added");
                 master_actions = 0;
+                uart_using_filesystem = 0;
                 return;
             }else{
-                ESP_LOGE(TAG, "Card declined: %s", line);
+                ESP_LOGE(TAG, "Card declined: %s", uid_str);
                 blink_led(0);
             }
         }
@@ -181,13 +188,14 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
             succ = 0;
             if(master_actions){
                 // removing card's uid from the list
-                delete_line("/spiffs/cards.txt", line_counter);
+                delete_line("/spiffs/cards.txt", uid_line);
                 ESP_LOGE(TAG, "Card deleted");
                 master_actions = 0;
+                uart_using_filesystem = 0;
                 return;
             }else{
-                ESP_LOGI(TAG, "Card authenticated: %s", line);
-                sprintf(txBuffer, line);
+                ESP_LOGI(TAG, "Card authenticated: %s", uid_str);
+                sprintf(txBuffer, uid_str);
                 xQueueSend(queue, (void*)txBuffer, (TickType_t)0);
                 blink_led(1);
                 /*while (1) {
@@ -266,12 +274,37 @@ void uart_comm(void *){
                     return;
                 }
                 char line[12];
-                while(fgets(line, sizeof(line), f)!=NULL){
+                while (fgets(line, sizeof(line), f) != NULL) {
                     size_t len = strlen(line);
+                    
+                    // Remove the trailing newline, if any
                     if (len > 0 && line[len - 1] == '\n') {
                         line[len - 1] = '\0';
+                        len--; // Adjust length after removing the newline
                     }
-                    ESP_LOGI(TAG, "%s", line);
+                
+                    // Trim leading spaces
+                    char *start = line;
+                    while (*start && isspace((unsigned char)*start)) {
+                        start++;
+                    }
+                
+                    // Trim trailing spaces
+                    char *end = start + strlen(start) - 1;
+                    while (end >= start && isspace((unsigned char)*end)) {
+                        end--;
+                    }
+                    
+                    // Null-terminate the trimmed line
+                    *(end + 1) = '\0';
+                
+                    // If the line is empty after trimming, skip it
+                    if (*start == '\0') {
+                        continue; // Skip empty or whitespace-only lines
+                    }
+                
+                    // Log the non-empty line, along with its length for debugging
+                    ESP_LOGI(TAG, "Line: \"%s\", Length: %d", start, strlen(start));
                 }
                 fclose(f);
             }
@@ -315,7 +348,11 @@ void uart_comm(void *){
                 } else {
                     printf("Line not found.\n");
                 }
-            } uart_using_filesystem = 0;
+            }
+            else if(strcmp("remove", command)){
+
+            } 
+            uart_using_filesystem = 0;
         
       }
       vTaskDelay(1000/ portTICK_PERIOD_MS);
