@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/uart.h"
+#include <ctype.h>
 
 #define RC522_SPI_BUS_GPIO_MISO    (19) 
 #define RC522_SPI_BUS_GPIO_MOSI    (23)
@@ -51,10 +52,11 @@ static rc522_spi_config_t driver_config = {
 
 static rc522_driver_handle_t driver;
 static rc522_handle_t scanner;
-TaskHandle_t myTaskHandle = NULL;
+TaskHandle_t myTaskHandle1 = NULL;
 TaskHandle_t myTaskHandle2 = NULL;
 QueueHandle_t queue;
 char txBuffer[50];
+int uart_using_filesystem = 0;
 
 
 void blink_led(int num){
@@ -122,9 +124,13 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
     if (picc->state == RC522_PICC_STATE_ACTIVE) {
         int succ =0;
         char uid_str[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
-         rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
+        rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
         rc522_picc_print(picc);
-
+        while(uart_using_filesystem==1){
+            ESP_LOGI(TAG, "Waiting for uart_using_filesystem =0 at on_picc_state_changed");
+            vTaskDelay(1000/ portTICK_PERIOD_MS);
+        }
+        uart_using_filesystem = 1;
         FILE* f = fopen("/spiffs/cards.txt", "r");
         if (f == NULL) {
             ESP_LOGE(TAG, "Failed to open file for reading");
@@ -189,30 +195,149 @@ static void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t even
                 }*/
             }
         }
+        uart_using_filesystem = 0;
     }
     else if (picc->state == RC522_PICC_STATE_IDLE && event->old_state >= RC522_PICC_STATE_ACTIVE) {
         ESP_LOGI(TAG, "Card has been removed from the reader");
     }
 }
 
+void parseCommand(char *input, char *cmd, char *uid1, char *uid2) {
+    char *token = strtok(input, " "); // First token (command)
+    if (token) strcpy(cmd, token);
+
+    char *uid_old = strtok(NULL, ":"); // Get the first UID (until ':')
+    if (uid_old) strcpy(uid1, uid_old);
+
+    char *uid_new = strtok(NULL, ""); // Get the second UID (rest of the string)
+    if (uid_new) strcpy(uid2, uid_new);
+}
+void trim_leading(char *str) {
+    char *start = str;
+
+    // Move `start` to the first non-space character
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    // Move the trimmed content to the original buffer
+    if (start != str) {
+        memmove(str, start, strlen(start) + 1);
+    }
+}
+
 void uart_comm(void *){
 
-    char rxBuffer[50];
-    //uint8_t data[128];
+   // char rxBuffer[50];
+    uint8_t data[128];
     while(1){
-     if( xQueueReceive(queue, &(rxBuffer), (TickType_t)5))
-     {
-      printf("Received data from queue == %s\n", rxBuffer);
+    /* if( xQueueReceive(queue, &(rxBuffer), (TickType_t)5))
+     {*/
+      /*printf("Received data from queue == %s\n", rxBuffer);
       rxBuffer[49]='\n';
-      uart_write_bytes_with_break(UART_PORT_NUM, rxBuffer,50, 100);
-      /*int len = uart_read_bytes(UART_PORT_NUM, sizeof(data)-1, 100); //100 hány tickenként olvasson
+      uart_write_bytes_with_break(UART_PORT_NUM, rxBuffer,50, 100);*/
+      int len = uart_read_bytes(UART_PORT_NUM, data, 127, 100); //100 hány tickenként olvasson
       if(len){
         data[len] = '\0';
         ESP_LOGI("UART RECEIVER", "received str: %s", (char*) data);
-      }*/
+        while(uart_using_filesystem==1){
+            ESP_LOGI(TAG, "Waiting for uart_using_filesystem =0 at uart_comm");
+            vTaskDelay(1000/ portTICK_PERIOD_MS);
+        }
+
+            uart_using_filesystem =1;
+
+            char input[128];
+            strcpy(input, (char*)data);
+           /* char command[8] = {0};
+            char uid1[12] ={0};
+            char uid2[12]={0};*/
+            char command[20], uid1[50], uid2[50];
+            parseCommand(input, command, uid1, uid2);
+            trim_leading(uid1);
+            trim_leading(uid2);
+            ESP_LOGI("uid2", "received str:%s", uid2);
+            
+            if(strcmp("list", command)==0){
+                
+                FILE* f = fopen("/spiffs/cards.txt", "r");
+                if (f == NULL) {
+                    ESP_LOGE(TAG, "Failed to open file for reading /spiffs/cards.txt");
+                    return;
+                }
+                char line[12];
+                while(fgets(line, sizeof(line), f)!=NULL){
+                    size_t len = strlen(line);
+                    if (len > 0 && line[len - 1] == '\n') {
+                        line[len - 1] = '\0';
+                    }
+                    ESP_LOGI(TAG, "%s", line);
+                }
+                fclose(f);
+            }
+            else if(strcmp("replace", command)==0){
+                FILE *file = fopen("/spiffs/cards.txt", "r");
+                FILE *temp = fopen("/spiffs/temp.txt", "w");
+
+                if (!file) {
+                    printf("Error opening file. /spiffs/cards.txt\n");
+                    return;
+                }
+                if (!temp) {
+                    printf("Error opening file. /spiffs/temp.txt\n");
+                    return;
+                }
+
+                char buffer[1024];
+                int replaced = 0;
+
+                while (fgets(buffer, sizeof(buffer), file)) {
+                    // Remove newline characters for exact comparison
+                    buffer[strcspn(buffer, "\r\n")] = 0;
+
+                    if (strcmp(buffer, uid1) == 0 && !replaced) {
+                        fprintf(temp, "%s\n", uid2); // Write the replacement line
+                        replaced = 1;
+                    } else {
+                        fprintf(temp, "%s\n", buffer); // Write the original line
+                    }
+                }
+
+                fclose(file);
+                fclose(temp);
+
+                // Replace the original file with the updated one
+                remove("/spiffs/cards.txt");
+                rename("/spiffs/temp.txt", "/spiffs/cards.txt");
+
+                if (replaced) {
+                    printf("Line replaced successfully.\n");
+                } else {
+                    printf("Line not found.\n");
+                }
+            } uart_using_filesystem = 0;
+        
+      }
       vTaskDelay(1000/ portTICK_PERIOD_MS);
 
-     }
+     //}
+    }
+
+}
+void rc522(void *){
+    
+    while(1){
+        rc522_spi_create(&driver_config, &driver);
+        rc522_driver_install(driver);
+    
+        rc522_config_t scanner_config = {
+            .driver = driver,
+        };
+    
+        rc522_create(&scanner_config, &scanner);
+        rc522_register_events(scanner, RC522_EVENT_PICC_STATE_CHANGED, on_picc_state_changed, NULL);
+        rc522_start(scanner);
+        vTaskDelay(1000/ portTICK_PERIOD_MS);
     }
 }
 
@@ -249,7 +374,7 @@ void app_main(void)
     {
     printf("Failed to create queue= %p\n", queue);
     }
-    xTaskCreatePinnedToCore(uart_comm, "uart_comm", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,10, &myTaskHandle2, 1);
+   
     ESP_LOGI("spiffs", "Initializing SPIFFS");
 
     esp_vfs_spiffs_conf_t conf = {
@@ -313,6 +438,8 @@ void app_main(void)
     //esp_vfs_spiffs_unregister(conf.partition_label);
     //ESP_LOGI(TAG, "SPIFFS unmounted");
 
+  //  xTaskCreatePinnedToCore(rc522, "rc522", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,9, &myTaskHandle1, 1);
+  xTaskCreatePinnedToCore(uart_comm, "uart_comm", CONFIG_MAIN_TASK_STACK_SIZE, NULL ,10, &myTaskHandle2, 0);
     rc522_spi_create(&driver_config, &driver);
     rc522_driver_install(driver);
 
