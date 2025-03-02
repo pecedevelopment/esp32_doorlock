@@ -213,8 +213,9 @@ void parseCommand(char *input, char *cmd, char *uid1, char *uid2) {
     char *uid_new = strtok(NULL, ""); // Get the second UID (rest of the string)
     if (uid_new) strcpy(uid2, uid_new);
 }
-void trim_leading(char *str) {
+void trim(char *str) {
     char *start = str;
+    char *end;
 
     // Move `start` to the first non-space character
     while (*start && isspace((unsigned char)*start)) {
@@ -225,7 +226,15 @@ void trim_leading(char *str) {
     if (start != str) {
         memmove(str, start, strlen(start) + 1);
     }
+
+    // Find the new end of the string
+    end = str + strlen(str) - 1;
+    while (end >= str && isspace((unsigned char)*end)) {
+        *end = '\0';  // Null-terminate the string at the last non-space character
+        end--;
+    }
 }
+
 
 void uart_comm(void *){
 
@@ -250,8 +259,8 @@ void uart_comm(void *){
                     using_filesystem =1;
                     char command[20], uid1[50], uid2[50];
                     parseCommand(buffer, command, uid1, uid2);
-                    trim_leading(uid1);
-                    trim_leading(uid2);
+                    trim(uid1);
+                    trim(uid2);
                     ESP_LOGI(TAG, "uid1:%s", uid1);
                     ESP_LOGI(TAG, "uid2:%s", uid2);
 
