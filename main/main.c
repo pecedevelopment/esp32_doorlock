@@ -53,11 +53,11 @@ static rc522_spi_config_t driver_config = {
     .rst_io_num = RC522_SCANNER_GPIO_RST,
 };
 
-void blink_led(int num)
+void blink_led(int mode)
 {
     esp_rom_gpio_pad_select_gpio(LED_GPIO);
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
-    if (num == 0)
+    if (mode == 0)
     { // led turned on for 5 secs
         gpio_set_level(LED_GPIO, 1);
         vTaskDelay(5000 / portTICK_PERIOD_MS); // 5 sec delay
