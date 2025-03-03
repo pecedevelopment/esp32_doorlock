@@ -1,57 +1,4 @@
-
-#include <stdio.h>
-#include <string.h>
-#include <sys/unistd.h>
-#include <sys/stat.h>
-#include "esp_err.h"
-#include "esp_log.h"
-#include "esp_spiffs.h"
-#include <esp_log.h>
-#include "rc522.h"
-#include "driver/rc522_spi.h"
-#include "rc522_picc.h"
-#include <stdint.h>
-#include "driver/gpio.h"
-#include "sdkconfig.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "driver/uart.h"
-#include <ctype.h>
-
-#define RC522_SPI_BUS_GPIO_MISO (19)
-#define RC522_SPI_BUS_GPIO_MOSI (23)
-#define RC522_SPI_BUS_GPIO_SCLK (18)
-#define RC522_SPI_SCANNER_GPIO_SDA (05) // SPI_SS
-#define RC522_SCANNER_GPIO_RST (22)     // soft-reset
-#define LED_GPIO GPIO_NUM_2
-#define UART_BAUDRATE 115200
-#define UART_PORT_NUM UART_NUM_0
-#define BUF_SIZE (1024)
-#define AUTH_FILE "/spiffs/cards.txt" // Input file path
-#define TEMP_FILE "/spiffs/temp.txt"  // Temporary file path
-#define UART_REPLACE_SECOND_UID_PREFIX ":"
-#define UART_TICKS_TO_WAIT (100)
-
-static const char *TAG = "UNI-FM";
-static rc522_driver_handle_t driver;
-static rc522_handle_t scanner;
-TaskHandle_t myTaskHandle = NULL;
-QueueHandle_t queue;
-int using_filesystem = 0;
-
-static rc522_spi_config_t driver_config = {
-    .host_id = SPI3_HOST,
-    .bus_config = &(spi_bus_config_t){
-        .miso_io_num = RC522_SPI_BUS_GPIO_MISO,
-        .mosi_io_num = RC522_SPI_BUS_GPIO_MOSI,
-        .sclk_io_num = RC522_SPI_BUS_GPIO_SCLK,
-    },
-    .dev_config = {
-        .spics_io_num = RC522_SPI_SCANNER_GPIO_SDA,
-    },
-    .rst_io_num = RC522_SCANNER_GPIO_RST,
-};
+#include "main.h"
 
 void blink_led(int mode)
 {
@@ -154,12 +101,12 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
         char uid_str[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
         rc522_picc_uid_to_str(&picc->uid, uid_str, sizeof(uid_str));
         rc522_picc_print(picc);
-        while (using_filesystem == 1)
+        while (using_filesystem == true)
         {
             ESP_LOGI(TAG, "Waiting for using_filesystem =0 at on_uid_change");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
-        using_filesystem = 1;
+        using_filesystem = true;
         // searching for uid in the txt
         int uid_line = -1;
         int succ = find_uid(uid_str, &uid_line);
@@ -168,7 +115,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
         {
             ESP_LOGE(TAG, "MASTER KEY SCANNED");
             master_actions = 1;
-            using_filesystem = 0;
+            using_filesystem = false;
             return;
         }
         if (succ == 0)
@@ -207,7 +154,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
             }
             master_actions = 0;
         }
-        using_filesystem = 0;
+        using_filesystem = false;
     }
     else if (picc->state == RC522_PICC_STATE_IDLE && event->old_state >= RC522_PICC_STATE_ACTIVE)
     {
@@ -275,13 +222,13 @@ void uart_comm(void *)
                     ESP_LOGI(TAG, "Received: %s", buffer);
                     index = 0;
 
-                    while (using_filesystem == 1)
+                    while (using_filesystem == true)
                     {
                         ESP_LOGI(TAG, "Waiting for using_filesystem =0 at uart_comm");
                         vTaskDelay(1000 / portTICK_PERIOD_MS);
                     }
 
-                    using_filesystem = 1;
+                    using_filesystem = true;
                     char command[20], uid1[50], uid2[50];
                     parseCommand(buffer, command, uid1, uid2);
                     trim(uid1);
@@ -412,7 +359,7 @@ void uart_comm(void *)
                         fclose(f);
                         ESP_LOGE(TAG, "Card added");
                     }
-                    using_filesystem = 0;
+                    using_filesystem = false;
                 }
             }
             else if (index < sizeof(buffer) - 1)
@@ -442,7 +389,7 @@ void app_main(void)
     intr_alloc_flags = ESP_INTR_FLAG_IRAM;
 #endif
 
-    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, UART_BUFFER_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
     ESP_ERROR_CHECK(uart_param_config(UART_PORT_NUM, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(UART_PORT_NUM, 1, 3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
