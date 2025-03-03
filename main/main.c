@@ -109,7 +109,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
         using_filesystem = true;
         // searching for uid in the txt
         int uid_line = -1;
-        int succ = find_uid(uid_str, &uid_line);
+        int success = find_uid(uid_str, &uid_line);
         // idiot proof mechanism, you can't delete the master key
         if (uid_line == 1)
         {
@@ -118,7 +118,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
             using_filesystem = false;
             return;
         }
-        if (succ == 0)
+        if (success == 0)
         {
             if (master_actions)
             { // adding card's uid to /spiffs/cards.txt
@@ -141,7 +141,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
         }
         else
         {
-            succ = 0;
+            success = 0;
             if (master_actions)
             { // removing card's uid from the list
                 delete_line(uid_line);
@@ -335,8 +335,8 @@ void uart_comm(void *)
                     else if (strcmp("delete", command) == 0)
                     {
                         int line_counter = -1;
-                        int succ = find_uid(uid1, &line_counter);
-                        if (succ == 1)
+                        int success = find_uid(uid1, &line_counter);
+                        if (success == 1)
                         {
                             ESP_LOGE(TAG, "UID: %s will be deleted on line %d", uid1, line_counter);
                             delete_line(line_counter);
