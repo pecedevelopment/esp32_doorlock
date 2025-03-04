@@ -59,8 +59,6 @@ void delete_line(int line_to_delete)
     rename(TEMP_FILE, AUTH_FILE);
 }
 
-int master_actions = 0;
-
 int find_uid(char *uid_str, int *line_counter)
 {
     FILE *f = fopen(AUTH_FILE, "r");
@@ -114,13 +112,13 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
         if (uid_line == 1)
         {
             ESP_LOGE(TAG, "MASTER KEY SCANNED");
-            master_actions = 1;
+            master_actions = true;
             using_filesystem = false;
             return;
         }
         if (success == 0)
         {
-            if (master_actions)
+            if (master_actions==true)
             { // adding card's uid to /spiffs/cards.txt
                 FILE *f = fopen(AUTH_FILE, "a");
                 if (f == NULL)
@@ -137,12 +135,12 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
                 ESP_LOGE(TAG, "Card declined: %s", uid_str);
                 blink_led(0);
             }
-            master_actions = 0;
+            master_actions = false;
         }
         else
         {
             success = 0;
-            if (master_actions)
+            if (master_actions==true)
             { // removing card's uid from the list
                 delete_line(uid_line);
                 ESP_LOGE(TAG, "Card deleted on %d line", uid_line);
@@ -152,7 +150,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
                 ESP_LOGI(TAG, "Card authenticated: %s", uid_str);
                 blink_led(1);
             }
-            master_actions = 0;
+            master_actions = false;
         }
         using_filesystem = false;
     }
