@@ -1,4 +1,23 @@
-Beléptetőrendszer
+
+
+# Kártyaolvaschó
+
+Régi/új SEMhez készített ESP32 mikrokontrollerrel és RC522 kártyaolvasó modullal létrehozott beléptetőrendszer.
+## Használati utasítás átlagos felhasználónak
+Tedd a kártyádat a kártyaolvasó közelébe (<5cm). Amennyiben beolvasta a kártyádat, a státuszled 5 másodpercig be van kapcsolva. Ha a led villog, akkor hozzá vagy adva a rendszerhez és kinyílik mindkét mágneszár. Amennyiben konstans ég, akkor nem tudsz bemenni, mert nem vagy hozzáadva a rendszerhez. Újraindítani az EN gombbal megnyomásával lehetséges.
+## Kártya hozzáadása/törlése
+Olvasd be a mesterkulcsot, majd vedd el a kártyaolvasótól. Olvasd be a hozzáadni/törölni kívánt kártyát. Kész :)
+
+Amennyiben mégsem szeretnél hozzáadni/törölni kártyát, de már be van olvasva a mesterkulcs, akkor húzz be egy random kártyát (ami nem a mesterkulcs), majd újra töröld ki/add hozzá. Szándékosan egyszerre csak 1 kártyát lehet hozzáadni/törölni.
+## Advanced használati utasítás
+
+UART-on lehet kommunikálni az ESP32-vel. Ehhez szükséged van egy USB UART [átalakítóra](https://www.hestore.hu/prod_10038506.html) és 3 db kenyértábla áthidaló vezetékre (breadboard kábelre :D ) A nyomtatott áramkörön van 3db szabad tüske: TX0, RX0 és GND néven. A lenti táblázat alapján kell bekötni
+
+| ESP32          |  TX0     | RX0   | GND   |
+|:-----          |:--------:|------:|------:|
+| UART Converter |  RX0     | TX0   | GND   |
+
+work in progress
 
 dokumentáció hamarosan
 
