@@ -1,9 +1,13 @@
 #include "main.h"
 
-void blink_led(int mode)
+void open_door(int mode)
 {
     esp_rom_gpio_pad_select_gpio(LED_GPIO);
+    esp_rom_gpio_pad_select_gpio(DOOR1_GPIO);
+    esp_rom_gpio_pad_select_gpio(DOOR2_GPIO);
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(DOOR1_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(DOOR2_GPIO, GPIO_MODE_OUTPUT);
     if (mode == 0)
     { // led turned on for 5 secs
         gpio_set_level(LED_GPIO, 1);
@@ -11,7 +15,9 @@ void blink_led(int mode)
         gpio_set_level(LED_GPIO, 0);
     }
     else
-    {
+    {// led blinking for 5 secs and opens both doors
+        gpio_set_level(DOOR1_GPIO, 1);
+        gpio_set_level(DOOR2_GPIO, 1);
         for (int i = 0; i < 9; i++)
         { // blinking for 5 secs
             gpio_set_level(LED_GPIO, 1);
@@ -19,6 +25,8 @@ void blink_led(int mode)
             gpio_set_level(LED_GPIO, 0);
             vTaskDelay(250 / portTICK_PERIOD_MS); // 0.25 sec delay
         }
+        gpio_set_level(DOOR1_GPIO, 0);
+        gpio_set_level(DOOR2_GPIO, 0);
     }
 }
 void delete_line(int line_to_delete)
@@ -133,7 +141,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
             else
             {
                 ESP_LOGE(TAG, "Card declined: %s", uid_str);
-                blink_led(0);
+                open_door(0);
             }
             master_actions = false;
         }
@@ -148,7 +156,7 @@ static void on_uid_change(void *arg, esp_event_base_t base, int32_t event_id, vo
             else
             {
                 ESP_LOGI(TAG, "Card authenticated: %s", uid_str);
-                blink_led(1);
+                open_door(1);
             }
             master_actions = false;
         }
