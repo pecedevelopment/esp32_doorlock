@@ -20,6 +20,8 @@
 #include <stdbool.h>
 
 #define LED_GPIO               GPIO_NUM_2
+#define DOOR1_GPIO             GPIO_NUM_17 
+#define DOOR2_GPIO             GPIO_NUM_16 
 #define UART_PORT_NUM          UART_NUM_0
 
 bool using_filesystem = false;
