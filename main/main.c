@@ -9,22 +9,24 @@ void open_door(int mode)
     gpio_set_direction(DOOR1_GPIO, GPIO_MODE_OUTPUT);
     gpio_set_direction(DOOR2_GPIO, GPIO_MODE_OUTPUT);
     if (mode == 0)
-    { // led turned on for 5 secs
-        gpio_set_level(LED_GPIO, 1);
-        vTaskDelay(5000 / portTICK_PERIOD_MS); // 5 sec delay
-        gpio_set_level(LED_GPIO, 0);
-    }
-    else
-    {// led blinking for 5 secs and opens both doors
-        gpio_set_level(DOOR1_GPIO, 1);
-        gpio_set_level(DOOR2_GPIO, 1);
+    {
         for (int i = 0; i < 9; i++)
-        { // blinking for 5 secs
+        { // led blinking for 5 secs 
             gpio_set_level(LED_GPIO, 1);
             vTaskDelay(250 / portTICK_PERIOD_MS); // 0.25 sec delay
             gpio_set_level(LED_GPIO, 0);
             vTaskDelay(250 / portTICK_PERIOD_MS); // 0.25 sec delay
         }
+    }
+    else
+    {// led turned on for 5 secs and opens both doors
+
+        gpio_set_level(DOOR1_GPIO, 1);
+        gpio_set_level(DOOR2_GPIO, 1);
+        // led turned on for 5 secs
+        gpio_set_level(LED_GPIO, 1);
+        vTaskDelay(5000 / portTICK_PERIOD_MS); // 5 sec delay
+        gpio_set_level(LED_GPIO, 0);
         gpio_set_level(DOOR1_GPIO, 0);
         gpio_set_level(DOOR2_GPIO, 0);
     }

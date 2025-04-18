@@ -19,7 +19,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 
-#define LED_GPIO               GPIO_NUM_21 //GPIO_NUM_2 the built in led on ESP
+#define LED_GPIO               GPIO_NUM_2 //GPIO_NUM_2/GPIO_NUM_21  the built in led on ESP
 #define DOOR1_GPIO             GPIO_NUM_17 
 #define DOOR2_GPIO             GPIO_NUM_16 
 #define UART_PORT_NUM          UART_NUM_0
