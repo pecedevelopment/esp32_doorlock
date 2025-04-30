@@ -53,12 +53,6 @@ Nyissuk meg az eszközkezelőt (device manager). Keressük ki a soros port füle
 
   
 
-work in progress
-
-  
-
-dokumentáció hamarosan
-
 | Parancs |PARAMÉTER 1|PARAMÉTER 2|LEÍRÁS|
 |:-----   |:--------: |:------:   |:------:|
 | list    |           |          | Kilistázza azokat a UID-kat, amelyek ki tudják nyitni az ajtó(ka)t   |
@@ -73,7 +67,11 @@ Amennyiben van paraméterünk, a parancs után egy :-al választjuk el a paramé
 | list | 
 |add |
   
+work in progress
 
+  
+
+dokumentáció hamarosan
 ha ilyesmi az error üzenet, majd újrabootol az esp:
 
 Guru Meditation Error: Core 0 panic'ed (LoadProhibited). Exception was unhandled.
