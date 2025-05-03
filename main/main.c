@@ -305,14 +305,17 @@ void uart_comm(void *)
                         }
 
                         char line[12];
-                        ;
+                        
                         int replaced = 0;
 
-                        while (fgets(line, sizeof(buffer), file))
+                        while (fgets(line, sizeof(line), file))
                         {
-                            // Remove newline characters for exact comparison
-                            buffer[strcspn(line, "\r\n")] = 0;
-
+                            size_t len = strlen(line);
+                            if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+                            {
+                                line[len - 1] = '\0';
+                            }
+                            
                             if (strcmp(line, uid1) == 0 && !replaced)
                             {
                                 fprintf(temp, "%s\n", uid2);
